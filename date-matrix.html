@@ -1,0 +1,366 @@
+<template id="date-matrix-template">
+    <style>
+      :host { 
+          display: block;
+      }
+      :host([hidden]) { display: none; }
+      .border {
+        border: 1px #d1d5da solid;
+        border-radius: 3px;
+        margin-bottom: 0px;
+        padding-top: 8px;
+        padding-bottom: 16px;
+        line-height: 11px;
+      }
+      .footer {
+        padding: 0 10px 12px;
+        font-size: 11px;
+        padding-right: 16px;
+        padding-left: 16px;
+        padding-bottom: 4px;
+        margin-right: 16px;
+        margin-left: 16px;
+        margin-top: 4px;
+      }
+      .title {
+        float: left;
+        color: #586069;
+      }
+      .legend-container {
+        float: right;
+        color: #586069;
+      }
+      .legend-container .legend {
+        display: inline-block;
+        position: relative;
+        bottom: -1px;
+        margin: 0 5px;
+        list-style: none;
+      }
+      .legend-container .legend li {
+        display: inline-block;
+        width: 10px;
+        height: 10px;
+      }
+      .matrix {
+        padding: 5px 0 0;
+        text-align: center;
+      }
+      svg:not(:root) { overflow: hidden; }
+      rect { shape-rendering: crispedges; }
+      .matrix text.month { 
+          font-size: 10px;
+          fill: #767676;
+      }
+      .matrix text.wday { 
+          font-size: 9px; 
+          fill: #767676;
+      }
+    </style>
+    <div class="border">
+        <div class="matrix">
+        </div>
+        <div class="footer">
+            <div class="title"></div>
+            <div class="legend-container">
+                Less
+                <ul class="legend">
+                    <li style="background-color: #eee"></li>
+                    <li style="background-color: #c6e48b"></li>
+                    <li style="background-color: #7bc96f"></li>
+                    <li style="background-color: #239a3b"></li>
+                    <li style="background-color: #196127"></li>
+                </ul>
+                More
+            </div>
+        </div>
+    </div>
+</template>
+
+<script>
+
+document._currentScript = document._currentScript || document.currentScript;
+
+customElements.define('date-matrix', class extends HTMLElement {
+    constructor() {
+        super();
+        let shadowRoot = this.attachShadow({mode: 'open'});
+        const t = document.querySelector('#date-matrix-template');
+        const instance = t.content.cloneNode(true);
+        shadowRoot.appendChild(instance);
+    }
+
+    get href() {
+        return this.getAttribute('href');
+    }
+
+    set href(v) {
+        this.setAttribute('href', string(v));
+        this.render();
+    }
+
+    connectedCallback() {
+        this.render();
+    }
+
+    static get observedAttributes() { return [ "href", "title" ] };
+
+    attributeChangedCallback() {
+        this.render();
+    }
+
+    render() {
+
+        fetchData(this.href)
+            .then(mixinDates(buildDates(new Date())))
+            .then(parseWeeks)
+            .then(({weeks}) => Object.assign({weeks}, parseMonths(weeks)))
+            .then(buildSVG)
+            .then(
+                (svg) => {
+                    const container = this.shadowRoot.querySelector(".matrix");
+                    container.innerHTML = svg.outerHTML;
+                }
+            );
+
+        const title = this.shadowRoot.querySelector(".title");
+        title.innerHTML = this.title;
+
+        const legend = this.shadowRoot.querySelector(".legend");
+        legend.title = this.title;
+    }
+
+});
+
+function buildSVG({weeks, months}) {
+                    
+    const svg = document.createElement("svg");
+    svg.setAttribute("width", 674);
+    svg.setAttribute("height", 104);
+    svg.setAttribute("class", "js-calendar-graph-svg");
+
+    const g = document.createElement("g");
+    g.setAttribute("transform", "translate(16, 20)");
+    svg.appendChild(g);
+
+    const g0 = document.createElement("g");
+    g0.setAttribute("transform", "translate(0, 0)");
+    g.appendChild(g0);
+
+    appendWeeks(g, weeks); 
+    appendMonths(g, months);                
+    appendDays(g);
+    
+    return svg;
+
+}
+
+
+function getColor(count) {
+    if (count == 0) return "#eee";
+    else if (count < 3) return "#c6e48b";
+    else if (count < 7) return "#7bc96f";
+    else if (count < 12) return "#239a3b";
+    else return "#196127";
+}
+
+
+function appendWeeks(g, weeks) {
+
+    weeks.forEach(
+
+        (days, i) => {
+            const x = 13 * (i + 1);
+            
+            const g1 = document.createElement("g");
+            g1.setAttribute("transform", `translate(${x}, 0)`);
+            g.appendChild(g1);
+
+            const x1 = 13 - i;
+            days.forEach(
+            
+                ({name, weekday, count}) => {
+
+                    const y = weekday * 12;
+
+                    const color = getColor(count);
+
+                    const rect = document.createElement("rect");
+                    rect.setAttribute("class", "day");
+                    rect.setAttribute("width", 10);
+                    rect.setAttribute("height", 10);
+                    rect.setAttribute("x", x1);
+                    rect.setAttribute("y", y);
+                    rect.setAttribute("fill", color);
+                    rect.setAttribute("data-count", count);
+                    rect.setAttribute("data-date", name);
+                    g1.appendChild(rect);
+                }
+            );
+            
+        }
+    );
+
+    return g;
+}
+
+function appendMonths(g, months) {
+
+    const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+            "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+    let month_offset = months[0].count < 3
+        ? (1 + months[0].count) * 12
+        : 24;
+
+    months.forEach(
+    
+        ({month, count}) => {
+            if (count > 2) {
+
+                const text = document.createElement("text");
+                text.setAttribute("x", month_offset);
+                text.setAttribute("y", -10);
+                text.setAttribute("class", "month");
+                text.textContent = MONTHS[month];
+                g.append(text);
+
+                month_offset += count * 12;
+            }
+        }
+    );
+
+    return g;
+}
+
+function appendDays(g) {
+
+    [
+        {day: "Mon", hidden: true, dy: 8}
+        , {day: "Tue", hidden: false, dy: 20}
+        , {day: "Wed", hidden: true, dy: 32}
+        , {day: "Thu", hidden: false, dy: 44}
+        , {day: "Fri", hidden: true, dy: 57}
+        , {day: "Sat", hidden: false, dy: 69}
+        , {day: "Sun", hidden: true, dy: 81}
+    ].forEach(
+    
+        ({dy, hidden, day}) => {
+            const text = document.createElement("text");
+            text.setAttribute("text-anchor", "start");
+            text.setAttribute("class", "wday");
+            text.setAttribute("dx", -14);
+            text.setAttribute("dy", dy);
+            if (hidden) {
+                text.setAttribute("style", "display: none;");
+            }
+            text.textContent = day;
+            g.appendChild(text);
+        }
+
+    );
+
+    return g;
+}  
+
+const B = (a, b) => (c) => a(b(c));
+
+const neg = (a) => -1 * a;
+
+function addDays(date, days) {
+    const result = new Date(date);
+    result.setDate(result.getDate() + days);
+    return result;
+}
+
+function buildDates(end, length=356) {
+    return Array.apply(null, {length})
+        .map(Number.call, Number)
+        .reduce((list, i) => {
+                const dt = addDays(end, neg(i));
+                const d = dt.getDay() === 0 ? 6 : dt.getDay() - 1;
+                list.unshift({
+                    name: dt.toISOString().slice(0, 10),
+                    $date: dt,
+                    weekday: d,
+                    month: dt.getMonth(),
+                    count: 0
+                });
+                return list;
+            }, []);
+}
+
+function fetchData(url) {
+
+    return fetch(url)
+        .then(resp => resp.text())
+        .then(text => text.split('\n'))
+        .then(rows => rows.map(row => row.split(',')));
+
+}
+
+function mixinDates(dates) {
+
+    return (rows) => rows.reduce(
+        (list, row) => {
+            const dt = new Date(row[0] + 'T00:00:00.000Z');
+            const key = dt.toISOString().slice(0,10);
+            const i = list.findIndex(({name}) => name === key);
+            if (i !== -1) {
+                list[i].count = Number(row[1]);
+            }
+            return list;
+        }
+        , dates
+    );
+
+}
+
+function parseWeeks(dates) {
+
+    const weeks = dates.reduce(
+
+        ({result, i}, dt) => {
+            if (dt.weekday == 0) {
+                result.push([dt]);
+                i++;
+            } else {
+                result[i].push(dt);
+            }
+            return {result, i};
+        }
+
+        , {result: [[]], i: 0}
+    ).result;
+
+    return {weeks};
+}
+
+function parseMonths(weeks) {
+
+    const months = weeks.reduce(
+    
+        (result, week) => {
+            const x = week.length - 1;
+            const prev = result.pop();
+            if (prev !== undefined) {
+                if (prev.month === week[x].month) {
+                    prev.count += 1;
+                    return [...result, prev];
+                }
+                return [...result, prev, {
+                    month: week[x].month,
+                    count: 1
+                }];
+            }
+            return [...result, {month: week[x].month, count: 1}];
+        }
+        
+        , []
+    );
+
+    return {months};
+
+}
+
+</script>
